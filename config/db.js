@@ -6,7 +6,8 @@ const pool = new Pool({
     connectionString: process.env.DB_URL,
     ssl: {
         rejectUnauthorized:false
-    }
+    },
+    family: 4
 });
 
 const simpleQuery = (text, params) => pool.query(text, params);
