@@ -87,7 +87,9 @@ const login = async (req, res) => {
                     httpOnly: true,
                     secure: process.env.NODE_ENV === 'production', // true en prod (https)
                     maxAge: 24 * 60 * 60 * 1000, // 24 horas
-                    sameSite: 'strict' // O 'lax', dependiendo de tu setup
+                    sameSite: 'lax',
+                    domain: getCookieDomain(),
+                    path: '/' 
                 });
     
                 // 2. Enviar los datos del usuario (sin el hash) al frontend
