@@ -9,6 +9,7 @@ const proyectosRoutes = require('./routes/proyectos.routes');
 const uploadRoutes = require('./routes/upload.routes');
 const tecnologiasRoutes = require('./routes/tecnologias.routes');
 const imagenesRoutes = require('./routes/imagenes.routes');
+const { Credentials } = require('aws-sdk');
 
 const app = express();
 app.set('trust proxy', true);
@@ -22,12 +23,15 @@ const corsOptions = {
       callback(new Error('Not allowed by CORS'));
     }
   },
+  credentials:true,
   optionsSuccessStatus: 200 
 };
 
-app.use(express.json());
-
 app.use(cors(corsOptions));
+
+app.options('*', cors(corsOptions)); 
+
+app.use(express.json());
 
 app.use(express.static(path.join(__dirname, 'public')));
 
