@@ -19,8 +19,38 @@ const register = async (req, res) => {
             req
         );
 
-        res.status(201).json({ msg: 'Usuario registrado', usuario: rows[0] });
+        const payload = { usuario: { id: rows[0].id }};
+        jwt.sign(
+            payload,
+            process.env.JWT_SECRET,
+            { expiresIn: '24h' },
+            (err, token) => {
+                if (err) throw err;
+                
+                // 1. Creamos la cookie
+                res.cookie('auth_token', token, {
+                    httpOnly: true,
+                    secure: process.env.NODE_ENV === 'production',
+                    maxAge: 24 * 60 * 60 * 1000, // 24 horas
+                    sameSite: 'strict'
+                });
+
+                // 2. Devolvemos los datos del usuario
+                res.status(201).json({ 
+                    msg: 'Usuario registrado y logueado', 
+                    user: {
+                        id: rows[0].id,
+                        nombre: rows[0].nombre,
+                        email: rows[0].email
+                    } 
+                });
+            }
+        );
+
     } catch (error) {
+        if (error.code === '23505') { // Error de email duplicado
+            return res.status(400).json({ error: `El email '${req.body.email}' ya esta asociado a una cuenta.`});
+        }
         console.error(error.message);
         res.status(500).json({ error:'Error en el registro' });
     }
@@ -51,7 +81,23 @@ const login = async (req, res) => {
             { expiresIn: '24h' },
             (err, token) => {
                 if (err) throw err;
-                res.json({ token });
+                // 1. Poner el token en una cookie HttpOnly (segura)
+                res.cookie('auth_token', token, {
+                    httpOnly: true,
+                    secure: process.env.NODE_ENV === 'production', // true en prod (https)
+                    maxAge: 24 * 60 * 60 * 1000, // 24 horas
+                    sameSite: 'strict' // O 'lax', dependiendo de tu setup
+                });
+    
+                // 2. Enviar los datos del usuario (sin el hash) al frontend
+                const user = {
+                    id: rows[0].id,
+                    nombre: rows[0].nombre,
+                    email: rows[0].email
+                };
+                
+                // 3. ¡Esto es lo que el AuthContext SÍ entiende!
+                res.status(200).json({ user }); 
             }
         );
         
@@ -68,4 +114,15 @@ const login = async (req, res) => {
     }
 };
 
-module.exports = { register, login };
+
+const logout = (req, res) => {
+    // Una ruta de logout que limpia la cookie
+    res.cookie('auth_token', '', {
+        httpOnly: true,
+        expires: new Date(0),
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict'
+    });
+    res.status(200).json({ msg: 'Logout exitoso' });
+};
+module.exports = { register, login,logout };
