@@ -80,24 +80,22 @@ const login = async (req, res) => {
             process.env.JWT_SECRET,
             { expiresIn: '24h' },
             (err, token) => {
-                if (err) throw err;
-                // 1. Poner el token en una cookie HttpOnly (segura)
-                res.cookie('auth_token', token, {
-                    httpOnly: true,
-                    secure: process.env.NODE_ENV === 'production', // true en prod (https)
-                    maxAge: 24 * 60 * 60 * 1000, // 24 horas
-                    sameSite: 'strict' // O 'lax', dependiendo de tu setup
-                });
-    
-                // 2. Enviar los datos del usuario (sin el hash) al frontend
-                const user = {
-                    id: rows[0].id,
-                    nombre: rows[0].nombre,
-                    email: rows[0].email
+                 if (err) {
+                    console.error("Error al firmar el token:", err);
+                    // Lanzar un error aquí asegura que el catch lo maneje
+                    throw new Error('Error al generar el token de autenticación'); 
+                }
+                
+                // Preparamos el objeto de usuario para enviar (SIN el hash)
+                const userResponse = {
+                    id: usuarioEncontrado.id,
+                    nombre: usuarioEncontrado.nombre,
+                    email: usuarioEncontrado.email
+                    // Añade aquí otros campos seguros que quieras enviar
                 };
                 
-                // 3. ¡Esto es lo que el AuthContext SÍ entiende!
-                res.status(200).json({ user }); 
+                // ¡LA RESPUESTA CORRECTA! Enviamos token Y user
+                res.status(200).json({ token, user: userResponse }); 
             }
         );
         
