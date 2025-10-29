@@ -13,7 +13,7 @@ const imagenesRoutes = require('./routes/imagenes.routes');
 const app = express();
 app.set('trust proxy', true);
 const port = process.env.PORT || 4000;
-const allowedOrigins = ['http://localhost:3000', 'http://localhost:5173', 'http://127.0.0.1:5500'];
+const allowedOrigins = ['http://localhost:3000', 'http://localhost:5173', 'http://127.0.0.1:5500', 'https://plynte.com'];
 const corsOptions = {
   origin: function (origin, callback) {
     if (!origin || allowedOrigins.indexOf(origin) !== -1) {
