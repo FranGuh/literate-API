@@ -27,14 +27,12 @@ const register = async (req, res) => {
             (err, token) => {
                 if (err) throw err;
                 
-                //secure: process.env.NODE_ENV === 'production',
                 // 1. Creamos la cookie
                 res.cookie('auth_token', token, {
                     httpOnly: true,
-                    secure: false,
+                    secure: process.env.NODE_ENV === 'production',
                     maxAge: 24 * 60 * 60 * 1000, // 24 horas
-                    sameSite: 'lax',
-                    path: '/'
+                    sameSite: 'strict'
                 });
 
                 // 2. Devolvemos los datos del usuario
@@ -86,11 +84,9 @@ const login = async (req, res) => {
                 // 1. Poner el token en una cookie HttpOnly (segura)
                 res.cookie('auth_token', token, {
                     httpOnly: true,
-                    secure: false, // true en prod (https)
+                    secure: process.env.NODE_ENV === 'production', // true en prod (https)
                     maxAge: 24 * 60 * 60 * 1000, // 24 horas
-                    sameSite: 'lax',
-                    domain: getCookieDomain(),
-                    path: '/' 
+                    sameSite: 'strict' // O 'lax', dependiendo de tu setup
                 });
     
                 // 2. Enviar los datos del usuario (sin el hash) al frontend
@@ -124,10 +120,8 @@ const logout = (req, res) => {
     res.cookie('auth_token', '', {
         httpOnly: true,
         expires: new Date(0),
-        secure: false,
-        sameSite: 'lax',
-        domain: getCookieDomain(),
-                    path: '/' 
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict'
     });
     res.status(200).json({ msg: 'Logout exitoso' });
 };
