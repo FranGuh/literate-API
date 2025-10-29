@@ -32,7 +32,8 @@ const register = async (req, res) => {
                     httpOnly: true,
                     secure: process.env.NODE_ENV === 'production',
                     maxAge: 24 * 60 * 60 * 1000, // 24 horas
-                    sameSite: 'strict'
+                    sameSite: 'lax',
+                    path: '/'
                 });
 
                 // 2. Devolvemos los datos del usuario
