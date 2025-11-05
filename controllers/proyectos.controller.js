@@ -1,36 +1,129 @@
-// controllers/proyectos.controller.js
 const db = require('../config/db');
 const format = require('pg-format');
 
-let cache = {
-    proyectos: null,
-    timestamp: null
-};
+// =============================================================================
+// CONSULTAS SQL REFACTORIZADAS
+// =============================================================================
 
-const OBTENER_PROYECTOS_QUERY = 'SELECT * FROM proyectos ORDER BY id DESC';
+// Esta consulta es ahora más ligera. Sigue obteniendo los datos principales
+// y sus relaciones 1-a-N (imágenes, tecnologías, likes), pero sin comentarios.
+// La paginación (LIMIT/OFFSET) se añadirá dinámicamente en la función.
+const OBTENER_PROYECTOS_QUERY = `
+    SELECT 
+        p.*,
+        COALESCE(
+            (SELECT json_agg(img)
+             FROM (
+                 SELECT i.id, i.url, i.texto_alt
+                 FROM imagenes i
+                 WHERE i.proyecto_id = p.id
+                 ORDER BY i.id
+             ) img
+            ), '[]'::json
+        ) AS imagenes,
+        
+        COALESCE(
+            (SELECT json_agg(t.nombre)
+             FROM proyectos_tecnologias pt
+             JOIN tecnologias t ON t.id = pt.tecnologia_id
+             WHERE pt.proyecto_id = p.id
+            ), '[]'::json
+        ) AS tecnologias,
+        
+        COALESCE(
+            (SELECT count(*)
+             FROM proyecto_likes pl
+             WHERE pl.proyecto_id = p.id
+            ), 0
+        )::int AS proyecto_likes_count
+        
+    FROM 
+        proyectos p
+    ORDER BY 
+        p.id DESC
+`;
+
+// Esta consulta también se aligera. Ya no necesita la unión de comentarios.
+const OBTENER_PROYECTO_POR_ID_QUERY = `
+    SELECT 
+        p.*,
+        COALESCE(
+            (SELECT json_agg(img)
+             FROM (
+                 SELECT i.id, i.url, i.texto_alt
+                 FROM imagenes i
+                 WHERE i.proyecto_id = p.id
+                 ORDER BY i.id
+             ) img
+            ), '[]'::json
+        ) AS imagenes,
+        
+        COALESCE(
+            (SELECT json_agg(t.nombre)
+             FROM proyectos_tecnologias pt
+             JOIN tecnologias t ON t.id = pt.tecnologia_id
+             WHERE pt.proyecto_id = p.id
+            ), '[]'::json
+        ) AS tecnologias,
+        
+        COALESCE(
+            (SELECT count(*)
+             FROM proyecto_likes pl
+             WHERE pl.proyecto_id = p.id
+            ), 0
+        )::int AS proyecto_likes_count
+        
+    FROM 
+        proyectos p
+    WHERE 
+        p.id = $1;
+`;
+
+// =============================================================================
+// FUNCIONES DEL CONTROLADOR REFACTORIZADAS
+// =============================================================================
 
 const obtenerProyectos = async (req, res) => {
     try {
-        if (cache.proyectos) {
-            return res.json(cache.proyectos);
-        }
-
-        const { rows } = await db.query(OBTENER_PROYECTOS_QUERY);
+        // --- PAGINACIÓN ---
+        // 1. Obtener 'page' y 'limit' de los query parameters (ej: /api/proyectos?page=1&limit=10)
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
         
-        cache.proyectos = rows;
+        // 2. Calcular el 'offset' (cuántos registros saltar)
+        const offset = (page - 1) * limit;
 
-        res.json(rows);
+        // 3. Modificar la consulta para incluir paginación
+        const paginatedQuery = OBTENER_PROYECTOS_QUERY + ` LIMIT $1 OFFSET $2`;
+        
+        console.log('Obteniendo proyectos paginados desde la BD');
+        const { rows } = await db.query(paginatedQuery, [limit, offset]);
+        
+        // 4. (Opcional pero recomendado) Obtener el conteo total para el frontend
+        const totalResult = await db.query('SELECT COUNT(*) FROM proyectos');
+        const totalProyectos = parseInt(totalResult.rows[0].count, 10);
+        const totalPaginas = Math.ceil(totalProyectos / limit);
+
+        // 5. Devolver una respuesta estructurada para paginación
+        res.json({
+            data: rows,
+            pagina: page,
+            totalPaginas: totalPaginas,
+            totalProyectos: totalProyectos
+        });
+        
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 };
 
 //GET /api/proyectos/:id
-
 const obtenerProyecto = async (req, res) => {
     try {
         const { id } = req.params;
-        const { rows, rowCount } = await db.query('SELECT * FROM proyectos WHERE id = $1', [id]);
+        
+        // Usamos la consulta aligerada (sin comentarios)
+        const { rows, rowCount } = await db.query(OBTENER_PROYECTO_POR_ID_QUERY, [id]);
         
         if ( rowCount === 0){
             return res.status(404).json({ error: 'Proyecto no encontrado.' });
@@ -52,9 +145,8 @@ const crearProyecto = async (req, res) => {
             [titulo, cuerpo],
             req
         );
-
-        cache.proyectos = null;
-
+        
+        // Ya no se maneja el caché
         res.status(201).json({ message: 'Proyecto creado exitosamente', data: rows[0] });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -83,7 +175,7 @@ const agregarTecnologiaAProyecto = async (req, res) => {
             [proyectoId, tecnologiaId],
             req
         );
-
+        
         res.status(201).json({ message: 'Tecnologia asociada al proyecto exitosamente.'});
 
     } catch (error) {
@@ -130,6 +222,7 @@ const asociarTecnologiasAProyecto = async (req, res) => {
         const sql = format('INSERT INTO proyectos_tecnologias (proyecto_id, tecnologia_id) VALUES %L RETURNING *', values);
         const { rows } = await client.query(sql);
         await client.query('COMMIT');
+        
         res.status(201).json({ message: 'Tecnologías asociadas exitosamente.', data: rows});
     } catch (error) {
         await client.query('ROLLBACK');
@@ -157,8 +250,6 @@ const eliminarProyecto = async (req, res) => {
             return res.status(404).json({ error: 'Proyecto no encontrado o no tienes permiso para eliminarlo.' });
         }
 
-        cache.proyectos = null;
-
         res.json({ message: 'Proyecto eliminado exitosamente', data: rows[0]} );
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -180,9 +271,9 @@ const eliminarTecnologiaDeProyecto = async (req, res) => {
         if (rowCount === 0) {
             return res.status(404).json({ error: 'La relación entre el proyecto  y la tecnología no fue encontrada o no tienes permiso para eliminarla..'});
         }
-
+        
         res.json({ message: 'Tecnología desasociada del proyecto exitosamente.' });
-    } catch {
+    } catch (error) {
         res.status(500).json({ error: error.message });
     }
 };
@@ -240,14 +331,49 @@ const actualizarProyecto = async (req, res) => {
             return res.status(404).json({ error: 'Proyecto no encontrado o no tienes permisos.'});
         }
         
-        cache.proyectos = null;
-
         res.json({ message: 'Proyecto actualizado exitosamente', data: rows[0] });
 
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
-}
+};
+
+// =============================================================================
+// FUNCIONES PARA LIKES DE PROYECTOS (MODIFICADO)
+// =============================================================================
+
+const toggleLikeAProyecto = async (req, res) => {
+    try {
+        const { proyectoId } = req.params;
+        const usuarioId = req.usuario.id;
+
+        // 1. Primero, intentamos eliminar el like.
+        const { rowCount } = await db.queryWithAudit(
+            'DELETE FROM proyecto_likes WHERE proyecto_id = $1 AND usuario_id = $2',
+            [proyectoId, usuarioId],
+            req
+        );
+
+        // 2. Si rowCount > 0, el like existía y fue eliminado.
+        if (rowCount > 0) {
+            return res.status(200).json({ message: 'Like quitado del proyecto' });
+        }
+
+        // 3. Si rowCount === 0, el like no existía. Lo creamos.
+        await db.queryWithAudit(
+            `INSERT INTO proyecto_likes (proyecto_id, usuario_id) 
+             VALUES ($1, $2)
+             ON CONFLICT (proyecto_id, usuario_id) DO NOTHING`,
+            [proyectoId, usuarioId],
+            req
+        );
+
+        res.status(201).json({ message: 'Like añadido al proyecto' });
+
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
 
 module.exports = {
     obtenerProyectos,
@@ -257,5 +383,6 @@ module.exports = {
     eliminarProyecto,
     eliminarTecnologiaDeProyecto,
     actualizarProyecto,
-    obtenerProyecto
-}
+    obtenerProyecto,
+    toggleLikeAProyecto 
+};

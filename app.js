@@ -9,7 +9,9 @@ const proyectosRoutes = require('./routes/proyectos.routes');
 const uploadRoutes = require('./routes/upload.routes');
 const tecnologiasRoutes = require('./routes/tecnologias.routes');
 const imagenesRoutes = require('./routes/imagenes.routes');
+const comentariosRoutes = require('./routes/comentarios.routes');
 const { Credentials } = require('aws-sdk');
+
 
 const app = express();
 app.set('trust proxy', true);
@@ -44,5 +46,6 @@ app.use('/api/proyectos', proyectosRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/tecnologias', tecnologiasRoutes);
 app.use('/api/imagenes', imagenesRoutes);
+app.use('/api/comentarios', comentariosRoutes);
 
 module.exports = app;
